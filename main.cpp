@@ -182,6 +182,7 @@ bool CreateProxy(int port)
             {
                 printf("%02X ", (unsigned char)bufferrecv[i]);
             }
+            printf("\n");
 
             // Send packet from the upstream server back to our client
             send(clientSocket, bufferrecv, totalBytesReceived, 0);
