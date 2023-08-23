@@ -179,7 +179,7 @@ int main()
 
     if (!hProcess)
     {
-        printf("[Main] Unable to find the process for Ohka BOTS. Please ensure the game is running. Quitting.\n");
+        printf("[Main] Unable to find the process for Bots. Please ensure the game is running. Quitting.\n");
         return 0;
     }
 
