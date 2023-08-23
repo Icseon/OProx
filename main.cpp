@@ -7,6 +7,8 @@
 
 /* Login address from the game */
 char loginAddress[15];
+char originalLoginAddress[15];
+HANDLE hProcess;
 
 /* brief: Open a process by its name
  * param: processName Name of the process to be opened
@@ -69,19 +71,25 @@ uintptr_t GetExecutableBaseAddress(HANDLE hProcess)
 }
 
 /* brief: Replace the login address in the game process
- * param: hProcess Handle to the game process
  */
-void ReplaceLoginAddress(HANDLE hProcess)
+void ReplaceLoginAddress(char* newAddress)
 {
-    const char* localLoginAddress = "127.0.0.1";
+    //const char* localLoginAddress = "127.0.0.1";
 
     const uintptr_t moduleBaseAddress = GetExecutableBaseAddress(hProcess);
     const uintptr_t loginAddressPtr = moduleBaseAddress + 0x00732FB0;
 
     ReadProcessMemory(hProcess, (LPVOID)loginAddressPtr, loginAddress, sizeof(loginAddress), nullptr);
 
-    printf("[ReplaceLoginAddress] Replacing login address <%s> with <%s>\n", loginAddress, localLoginAddress);
-    WriteProcessMemory(hProcess, (LPVOID)loginAddressPtr, localLoginAddress, strlen(localLoginAddress) + 1, nullptr);
+    if (originalLoginAddress[0] == 0x00)
+    {
+        memcpy(originalLoginAddress, loginAddress, sizeof(loginAddress));
+        printf("[ReplaceLoginAddress] Successfully copied login address to originalLoginAddress\n");
+    }
+
+
+    printf("[ReplaceLoginAddress] Replacing login address <%s> with <%s>\n", loginAddress, newAddress);
+    WriteProcessMemory(hProcess, (LPVOID)loginAddressPtr, newAddress, strlen(newAddress) + 1, nullptr);
     printf("[ReplaceLoginAddress] Successfully replaced the login address!\n");
 }
 
@@ -186,6 +194,10 @@ bool CreateProxy(int port)
 
             // Send packet from the upstream server back to our client
             send(clientSocket, bufferrecv, totalBytesReceived, 0);
+
+            /* Restore old login address */
+            ReplaceLoginAddress(originalLoginAddress);
+
         }
 
         closesocket(upstreamSocket);
@@ -200,7 +212,7 @@ bool CreateProxy(int port)
 /* brief: Main entry point of the program */
 int main()
 {
-    HANDLE hProcess = OpenProcessByName("ohka.dat");
+    hProcess = OpenProcessByName("ohka.dat");
 
     if (!hProcess)
     {
@@ -208,7 +220,7 @@ int main()
         return 0;
     }
 
-    ReplaceLoginAddress(hProcess);
+    ReplaceLoginAddress((char*)"127.0.0.1");
     CreateProxy(11000);
 
     return 0;
