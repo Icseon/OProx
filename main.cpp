@@ -122,7 +122,7 @@ bool CreateProxy(int port)
 
         sockaddr_in upstreamAddr;
         upstreamAddr.sin_family = AF_INET;
-        upstreamAddr.sin_port = htons(port);
+        upstreamAddr.sin_port = htons(11000);
         upstreamAddr.sin_addr.s_addr = inet_addr(loginAddress);
 
         if (connect(upstreamSocket, (sockaddr*)&upstreamAddr, sizeof(upstreamAddr)) == SOCKET_ERROR)
@@ -148,19 +148,43 @@ bool CreateProxy(int port)
                 break; // Client disconnected or error
             }
 
+            printf("[Received from client] ");
+            for (int i = 0; i < bytesRead; i++)
+            {
+                printf("%02X ", (unsigned char)buffer[i]);
+            }
+            printf("\n");
+
             // Send packet to the upstream server
             send(upstreamSocket, buffer, bytesRead, 0);
 
-            // Receive packets from the upstream server
-            bytesRead = recv(upstreamSocket, buffer, sizeof(buffer), 0);
+            int totalBytesReceived = 0;
+            int minimumPacketLength = 80; /* Login packet length, I am not going to tlv16 parsing yet */
 
-            if (bytesRead <= 0)
+            char bufferrecv[minimumPacketLength];
+
+            /* Receive packet from the upstream server */
+            while (totalBytesReceived < minimumPacketLength)
             {
-                break; // Upstream disconnected or error
+                int bytesReceived = recv(upstreamSocket, bufferrecv + totalBytesReceived, sizeof(bufferrecv) - totalBytesReceived, 0);
+
+                if (bytesReceived <= 0)
+                {
+                    printf("[Proxy] Upstream disconnected or error while receiving.\n");
+                    break;
+                }
+
+                totalBytesReceived += bytesReceived;
+            }
+
+            printf("[Received from upstream] ");
+            for (int i = 0; i < totalBytesReceived; i++)
+            {
+                printf("%02X ", (unsigned char)bufferrecv[i]);
             }
 
             // Send packet from the upstream server back to our client
-            send(clientSocket, buffer, bytesRead, 0);
+            send(clientSocket, bufferrecv, totalBytesReceived, 0);
         }
 
         closesocket(upstreamSocket);
