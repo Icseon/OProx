@@ -5,9 +5,11 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-/* Login address from the game */
+/* Login address from the game alongside its original address */
 char loginAddress[15];
 char originalLoginAddress[15];
+
+/* Game process */
 HANDLE hProcess;
 
 /* brief: Open a process by its name
@@ -21,7 +23,7 @@ HANDLE OpenProcessByName(const char* processName)
 
     if (!EnumProcesses(processes, sizeof(processes), &bytesReturned))
     {
-        printf("EnumProcesses failed\n");
+        printf("[OpenProcessByName] EnumProcesses failed\n");
         return nullptr;
     }
 
@@ -50,7 +52,7 @@ HANDLE OpenProcessByName(const char* processName)
 }
 
 /* brief: Get the base address of the executable module
- * param: hProcess Handle to the target process
+ * param: hProcess - Handle to the target process
  * return: Base address of the executable module, or 0 if not found
  */
 uintptr_t GetExecutableBaseAddress(HANDLE hProcess)
@@ -70,31 +72,34 @@ uintptr_t GetExecutableBaseAddress(HANDLE hProcess)
     return 0;
 }
 
-/* brief: Replace the login address in the game process
+/*
+ * brief: Replace the login address in the game process
+ * param: newAddress - the new address
  */
 void ReplaceLoginAddress(char* newAddress)
 {
-    //const char* localLoginAddress = "127.0.0.1";
 
-    const uintptr_t moduleBaseAddress = GetExecutableBaseAddress(hProcess);
-    const uintptr_t loginAddressPtr = moduleBaseAddress + 0x00732FB0;
+    /* Retrieve login address pointer */
+    const uintptr_t loginAddressPtr = GetExecutableBaseAddress(hProcess) + 0x00732FB0;
 
+    /* Read current login address from memory */
     ReadProcessMemory(hProcess, (LPVOID)loginAddressPtr, loginAddress, sizeof(loginAddress), nullptr);
 
+    /* If the original login address hasn't been set - set it now */
     if (originalLoginAddress[0] == 0x00)
     {
         memcpy(originalLoginAddress, loginAddress, sizeof(loginAddress));
         printf("[ReplaceLoginAddress] Successfully copied login address to originalLoginAddress\n");
     }
 
-
+    /* Begin replacing the login address */
     printf("[ReplaceLoginAddress] Replacing login address <%s> with <%s>\n", loginAddress, newAddress);
     WriteProcessMemory(hProcess, (LPVOID)loginAddressPtr, newAddress, strlen(newAddress) + 1, nullptr);
     printf("[ReplaceLoginAddress] Successfully replaced the login address!\n");
 }
 
 /* brief: Create a proxy server
- * param: port Port number for the proxy server
+ * param: port - Port number for the proxy server
  * return: True if the proxy was created successfully, false otherwise
  */
 bool CreateProxy(int port)
@@ -113,7 +118,7 @@ bool CreateProxy(int port)
 
     if (listen(listenSocket, SOMAXCONN) == SOCKET_ERROR)
     {
-        printf("Listen failed.\n");
+        printf("[CreateProxy] Listen failed. Please ensure that port 11000 is not in use by another process and attempt again.\n");
         closesocket(listenSocket);
         WSACleanup();
         return false;
@@ -130,7 +135,7 @@ bool CreateProxy(int port)
 
         sockaddr_in upstreamAddr;
         upstreamAddr.sin_family = AF_INET;
-        upstreamAddr.sin_port = htons(11000);
+        upstreamAddr.sin_port = htons(port);
         upstreamAddr.sin_addr.s_addr = inet_addr(loginAddress);
 
         if (connect(upstreamSocket, (sockaddr*)&upstreamAddr, sizeof(upstreamAddr)) == SOCKET_ERROR)
@@ -148,12 +153,12 @@ bool CreateProxy(int port)
 
             char buffer[1024];
 
-            // Receive packets from the client
+            /* Receive packets from the client */
             int bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
 
             if (bytesRead <= 0)
             {
-                break; // Client disconnected or error
+                break; /* Client disconnected or error */
             }
 
             printf("[Received from client] ");
@@ -163,11 +168,11 @@ bool CreateProxy(int port)
             }
             printf("\n");
 
-            // Send packet to the upstream server
+            /* Send packet to the upstream server */
             send(upstreamSocket, buffer, bytesRead, 0);
 
             int totalBytesReceived = 0;
-            int minimumPacketLength = 80; /* Login packet length, I am not going to tlv16 parsing yet */
+            int minimumPacketLength = 80; /* Login packet length, I am not going to bother with tlv16 parsing yet */
 
             char bufferrecv[minimumPacketLength];
 
@@ -192,7 +197,7 @@ bool CreateProxy(int port)
             }
             printf("\n");
 
-            // Send packet from the upstream server back to our client
+            /* Send packet from the upstream server back to our client */
             send(clientSocket, bufferrecv, totalBytesReceived, 0);
 
             /* Restore old login address */
@@ -210,17 +215,32 @@ bool CreateProxy(int port)
 }
 
 /* brief: Main entry point of the program */
-int main()
+int main(int argc, char* argv[])
 {
-    hProcess = OpenProcessByName("ohka.dat");
+
+    // /* If the argument count is zero, inform the user that an argument is required */
+    if (argc < 2)
+    {
+        printf("[Main] We must know the process name for the robot fighting game. Please provide this using the command line as an argument. Jumping off a roof now.\n");
+        return 1;
+    }
+
+    printf("[Main] Got process name %s\n", argv[1]);
+
+    /* Attempt to open the relevant process */
+    hProcess = OpenProcessByName(argv[1]);
 
     if (!hProcess)
     {
-        printf("[Main] Unable to find the process for Bots. Please ensure the game is running. Quitting.\n");
-        return 0;
+        printf("[Main] Unable to find the process for robot fighting game. Please ensure the robot fighting game is running. Jumping off a roof now.\n");
+        return 1;
     }
 
+
+    /* Make the game client connect to our proxy */
     ReplaceLoginAddress((char*)"127.0.0.1");
+
+    /* Create authentication proxy on the authentication port */
     CreateProxy(11000);
 
     return 0;
